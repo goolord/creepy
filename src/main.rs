@@ -6,6 +6,7 @@ extern crate scraper;
 extern crate select;
 extern crate serde;
 extern crate serde_regex;
+extern crate url;
 mod types;
 use regex::Regex;
 use std::fs::File;
@@ -13,6 +14,7 @@ use std::io::prelude::*;
 use std::time::Duration;
 use types::*;
 use scraper::{Html, Selector};
+use url::{Url};
 
 fn read_file_contents(file_name: &str) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
@@ -81,20 +83,44 @@ fn main() {
             panic!("Your blacklist overrides domains you have set")
         }
         // crawl
-        let mut hits: Vec<&str> = Vec::new();
-        let mut misses: Vec<&str> = Vec::new();
-        fn crawl_single(domain: &str) -> Option<Vec<&str>> {
+        let mut hits: Vec<&str> = Vec::new(); // matched predicate
+        let mut misses: Vec<&str> = Vec::new(); // did not match predicate
+
+        fn crawl_single<F>(domain: &str, is_valid: F) -> Vec<String> where F: Fn(&str) -> bool {
             let mut response: reqwest::Response = reqwest::get(domain).unwrap();
             let body: String = response.text().unwrap();
             let document: Html = Html::parse_document(&body);
             let default_link_selector: Selector = Selector::parse("a[href]").unwrap();
-            let links = document.select(&default_link_selector).next().unwrap().value();
-            println!("{:?}", links);
-            return None
+            let links = document.select(&default_link_selector);
+
+            let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
+            for link in links.into_iter() {
+                match link.value().attr("href") {
+                    Some(url) => {
+                        match Url::parse(url) {
+                            Ok(_) => if is_valid(url) {
+                                legs.push(url.to_owned())
+                            },
+                            Err(_) => ()
+                        }
+                    }
+                    None => {
+                    }
+                }
+            }
+            return legs
         }
-        for domain in config.domains {
-            crawl_single(&domain);
+
+        // this is effectful: this will just append all of the hits / misses and recursively crawl
+        // every domain. i don't really  like that this is so opaque
+        fn crawl_multi<F>(domains: Vec<String>, validate_url: F) -> () where F: Fn(&str) -> bool {
+            for domain in domains {
+                crawl_multi(crawl_single(&domain, &validate_url), &validate_url);
+            }
         }
+
+        crawl_multi(config.domains.to_owned(), |x| config.valid_domain(x))
+
     }
 }
 
