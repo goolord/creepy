@@ -2,10 +2,10 @@ domains = ['https://github.com/goolord']
 blacklist = ['.*']
 whitelist = ['https://github.com/goolord.*']
 respect_robots_txt = true
+link_criteria = ['a.is-link:not(button)']
+match_criteria = ['form.is-form']
 
 [period]
 secs = 1
 nanos = 0
 
-link_criteria = ['a.is-link:not(button)']
-match_criteria = ['form.is-form']
