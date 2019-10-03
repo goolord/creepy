@@ -12,6 +12,7 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::prelude::*;
+use std::thread::sleep;
 use std::time::Duration;
 use types::*;
 use url::Url;
@@ -90,11 +91,13 @@ fn main() {
         }
         // crawl
 
-        crawl_multi(&config.domains, &config)
+        let crawler: Crawler = crawl_multi(&config.domains, &config);
+        println!("{:#?}", crawler);
     }
 }
 
-fn crawl_multi(domains: &Vec<String>, config: &Config) -> () {
+fn crawl_multi(domains: &Vec<String>, config: &Config) -> Crawler {
+    let unexhausted_domains: Vec<String> = Vec::new();
     let mut hits: Vec<String> = Vec::new(); // matched predicate
     let mut misses: Vec<String> = Vec::new(); // did not match predicate
     for domain in domains {
@@ -103,12 +106,11 @@ fn crawl_multi(domains: &Vec<String>, config: &Config) -> () {
         misses.append(&mut crawler.misses);
         crawl_multi(&crawler.unexhausted_domains, config);
     }
-}
-
-struct Crawler {
-    unexhausted_domains: Vec<String>,
-    hits: Vec<String>,
-    misses: Vec<String>,
+    return Crawler {
+        unexhausted_domains,
+        hits,
+        misses,
+    };
 }
 
 fn crawl_single(domain: &str, config: &Config) -> Crawler {
@@ -123,7 +125,7 @@ fn crawl_single(domain: &str, config: &Config) -> Crawler {
         .map(|x| x.into_iter().map(|Selector_(y)| y.to_owned()).collect());
     let link_selectors = match user_link_selectors {
         None => vec![Selector::parse("a[href]").unwrap()], // default link selector
-        Some(selectors) => selectors
+        Some(selectors) => selectors,
     };
 
     let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
@@ -139,10 +141,12 @@ fn crawl_single(domain: &str, config: &Config) -> Crawler {
                     }
                     Err(_) => (),
                 },
-                None => {}
+                None => (),
             }
         }
     }
+
+    sleep(config.period); // polite delay
 
     return Crawler {
         unexhausted_domains: legs,

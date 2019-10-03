@@ -60,3 +60,10 @@ impl From<Selector_> for Selector {
         return sel;
     }
 }
+
+#[derive(Debug)]
+pub struct Crawler {
+    pub unexhausted_domains: Vec<String>,
+    pub hits: Vec<String>,
+    pub misses: Vec<String>,
+}
