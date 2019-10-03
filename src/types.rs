@@ -1,7 +1,7 @@
-#[macro_use]
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
 use regex::Regex;
 use std::time::Duration;
+use scraper::{Selector};
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
@@ -14,8 +14,10 @@ pub struct Config {
     pub whitelist: Vec<Regex>,
     pub respect_robots_txt: bool,
     #[serde(default)]
+    #[serde(skip_serializing)]
     pub match_criteria: Vec<Criteria>,
     #[serde(default)]
+    #[serde(skip_serializing)]
     pub link_criteria: Vec<Criteria>,
     pub period: Duration,
 }
@@ -34,17 +36,25 @@ impl Config {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct Criteria {
-    pub element: Option<Element>,
+    pub selector: Option<Selector_>,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct Element {
-    pub node_name: String,
-    pub present_attrs: Vec<Attr>,
-    pub absent_attrs: Vec<Attr>,
+pub struct Selector_(Selector);
+
+impl<'de> Deserialize<'de> for Selector_ {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        // Deserialize the string and get individual components
+        let s = String::deserialize(deserializer)?;
+
+        // Parse individual components
+        let selector: Selector = Selector::parse(&s).expect("Parse error in selector");
+
+        // Convert to int and wrap in time
+        Ok(Selector_(selector))
+    }
 }
 
-pub type Attr = ();
 

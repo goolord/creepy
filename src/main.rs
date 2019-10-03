@@ -69,7 +69,9 @@ fn main() {
                 match_criteria: Vec::new(),
                 period: Duration::from_secs(1),
             };
-            println!("{}", toml::to_string_pretty(&full_config).unwrap())
+            println!("{}", toml::to_string_pretty(&full_config).unwrap());
+            println!("link_criteria = ['a.is-link:not(button)']");
+            println!("match_criteria = ['form.is-form']");
         }
     }
 
@@ -83,44 +85,57 @@ fn main() {
             panic!("Your blacklist overrides domains you have set")
         }
         // crawl
-        let mut hits: Vec<&str> = Vec::new(); // matched predicate
-        let mut misses: Vec<&str> = Vec::new(); // did not match predicate
 
-        fn crawl_single<F>(domain: &str, is_valid: F) -> Vec<String> where F: Fn(&str) -> bool {
-            let mut response: reqwest::Response = reqwest::get(domain).unwrap();
-            let body: String = response.text().unwrap();
-            let document: Html = Html::parse_document(&body);
-            let default_link_selector: Selector = Selector::parse("a[href]").unwrap();
-            let links = document.select(&default_link_selector);
-
-            let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
-            for link in links.into_iter() {
-                match link.value().attr("href") {
-                    Some(url) => {
-                        match Url::parse(url) {
-                            Ok(_) => if is_valid(url) {
-                                legs.push(url.to_owned())
-                            },
-                            Err(_) => ()
-                        }
-                    }
-                    None => {
-                    }
-                }
-            }
-            return legs
-        }
-
-        // this is effectful: this will just append all of the hits / misses and recursively crawl
-        // every domain. i don't really  like that this is so opaque
-        fn crawl_multi<F>(domains: Vec<String>, validate_url: F) -> () where F: Fn(&str) -> bool {
-            for domain in domains {
-                crawl_multi(crawl_single(&domain, &validate_url), &validate_url);
-            }
-        }
-
-        crawl_multi(config.domains.to_owned(), |x| config.valid_domain(x))
+        crawl_multi(&config.domains, &config)
 
     }
 }
 
+fn crawl_multi(domains: &Vec<String>, config: &Config) -> () {
+    let mut hits: Vec<String> = Vec::new(); // matched predicate
+    let mut misses: Vec<String> = Vec::new(); // did not match predicate
+    for domain in domains {
+        let mut crawler: Crawler = crawl_single(&domain, config);
+        hits.append(&mut crawler.hits);
+        misses.append(&mut crawler.misses);
+        crawl_multi(&crawler.unexhausted_domains, config);
+    }
+}
+
+struct Crawler {
+    unexhausted_domains: Vec<String>,
+    hits: Vec<String>,
+    misses: Vec<String>
+}
+
+
+fn crawl_single(domain: &str, config: &Config) -> Crawler {
+    let mut hits: Vec<String> = Vec::new(); // matched predicate
+    let mut misses: Vec<String> = Vec::new(); // did not match predicate
+    let mut response: reqwest::Response = reqwest::get(domain).unwrap();
+    let body: String = response.text().unwrap();
+    let document: Html = Html::parse_document(&body);
+    let default_link_selector: Selector = Selector::parse("a[href]").unwrap();
+    let links = document.select(&default_link_selector);
+
+    let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
+    for link in links.into_iter() {
+        match link.value().attr("href") {
+            Some(url) => {
+                match Url::parse(url) {
+                    Ok(_) => if config.valid_domain(url) {
+                        legs.push(url.to_owned())
+                    },
+                    Err(_) => ()
+                }
+            }
+            None => {
+            }
+        }
+    }
+    return Crawler {
+        unexhausted_domains: legs,
+        hits,
+        misses
+    };
+}
