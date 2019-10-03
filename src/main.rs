@@ -132,17 +132,16 @@ fn crawl_single(domain: &str, config: &Config) -> Crawler {
     for sel in link_selectors {
         let links = document.select(&sel);
         for link in links.into_iter() {
-            match link.value().attr("href") {
-                Some(url) => match Url::parse(url) {
+            link.value().attr("href").map(|url| {
+                match Url::parse(url) {
                     Ok(_) => {
                         if config.valid_domain(url) {
                             legs.push(url.to_owned())
                         }
                     }
                     Err(_) => (),
-                },
-                None => (),
-            }
+                };
+            });
         }
     }
 
