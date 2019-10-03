@@ -9,12 +9,12 @@ extern crate serde_regex;
 extern crate url;
 mod types;
 use regex::Regex;
+use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::prelude::*;
 use std::time::Duration;
 use types::*;
-use scraper::{Html, Selector};
-use url::{Url};
+use url::Url;
 
 fn read_file_contents(file_name: &str) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
@@ -53,8 +53,8 @@ fn main() {
                 blacklist: Vec::new(),
                 whitelist: Vec::new(),
                 respect_robots_txt: false,
-                link_criteria: Vec::new(),
-                match_criteria: Vec::new(),
+                link_criteria: Some(Vec::new()),
+                match_criteria: Some(Vec::new()),
                 period: Duration::from_secs(0),
             };
             println!("{}", toml::to_string_pretty(&default_config).unwrap())
@@ -65,8 +65,8 @@ fn main() {
                 blacklist: vec![Regex::new(".*").unwrap()],
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
                 respect_robots_txt: true,
-                link_criteria: Vec::new(),
-                match_criteria: Vec::new(),
+                link_criteria: Some(Vec::new()),
+                match_criteria: Some(Vec::new()),
                 period: Duration::from_secs(1),
             };
             println!("{}", toml::to_string_pretty(&full_config).unwrap());
@@ -81,13 +81,16 @@ fn main() {
         let config_file_name: &str = crawly_matches.value_of("CONFIG").unwrap();
         let config: Config = decode_toml(config_file_name).expect("Could not decode config");
         // validate the config
-        if config.domains.iter().fold(false, |acc, domain| !config.valid_domain(domain) || acc) {
+        if config
+            .domains
+            .iter()
+            .fold(false, |acc, domain| !config.valid_domain(domain) || acc)
+        {
             panic!("Your blacklist overrides domains you have set")
         }
         // crawl
 
         crawl_multi(&config.domains, &config)
-
     }
 }
 
@@ -105,9 +108,8 @@ fn crawl_multi(domains: &Vec<String>, config: &Config) -> () {
 struct Crawler {
     unexhausted_domains: Vec<String>,
     hits: Vec<String>,
-    misses: Vec<String>
+    misses: Vec<String>,
 }
-
 
 fn crawl_single(domain: &str, config: &Config) -> Crawler {
     let mut hits: Vec<String> = Vec::new(); // matched predicate
@@ -115,27 +117,36 @@ fn crawl_single(domain: &str, config: &Config) -> Crawler {
     let mut response: reqwest::Response = reqwest::get(domain).unwrap();
     let body: String = response.text().unwrap();
     let document: Html = Html::parse_document(&body);
-    let default_link_selector: Selector = Selector::parse("a[href]").unwrap();
-    let links = document.select(&default_link_selector);
+    let user_link_selectors: Option<Vec<Selector>> = config
+        .link_criteria
+        .as_ref()
+        .map(|x| x.into_iter().map(|Selector_(y)| y.to_owned()).collect());
+    let link_selectors = match user_link_selectors {
+        None => vec![Selector::parse("a[href]").unwrap()], // default link selector
+        Some(selectors) => selectors
+    };
 
     let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
-    for link in links.into_iter() {
-        match link.value().attr("href") {
-            Some(url) => {
-                match Url::parse(url) {
-                    Ok(_) => if config.valid_domain(url) {
-                        legs.push(url.to_owned())
-                    },
-                    Err(_) => ()
-                }
-            }
-            None => {
+    for sel in link_selectors {
+        let links = document.select(&sel);
+        for link in links.into_iter() {
+            match link.value().attr("href") {
+                Some(url) => match Url::parse(url) {
+                    Ok(_) => {
+                        if config.valid_domain(url) {
+                            legs.push(url.to_owned())
+                        }
+                    }
+                    Err(_) => (),
+                },
+                None => {}
             }
         }
     }
+
     return Crawler {
         unexhausted_domains: legs,
         hits,
-        misses
+        misses,
     };
 }

@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize, Deserializer};
 use regex::Regex;
+use scraper::Selector;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::time::Duration;
-use scraper::{Selector};
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
@@ -15,10 +15,10 @@ pub struct Config {
     pub respect_robots_txt: bool,
     #[serde(default)]
     #[serde(skip_serializing)]
-    pub match_criteria: Vec<Criteria>,
+    pub match_criteria: Option<Vec<Selector_>>,
     #[serde(default)]
     #[serde(skip_serializing)]
-    pub link_criteria: Vec<Criteria>,
+    pub link_criteria: Option<Vec<Selector_>>,
     pub period: Duration,
 }
 
@@ -36,16 +36,13 @@ impl Config {
     }
 }
 
-#[derive(Deserialize)]
-pub struct Criteria {
-    pub selector: Option<Selector_>,
-}
-
-pub struct Selector_(Selector);
+pub struct Selector_(pub Selector);
 
 impl<'de> Deserialize<'de> for Selector_ {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
+    where
+        D: Deserializer<'de>,
+    {
         // Deserialize the string and get individual components
         let s = String::deserialize(deserializer)?;
 
@@ -57,4 +54,9 @@ impl<'de> Deserialize<'de> for Selector_ {
     }
 }
 
-
+impl From<Selector_> for Selector {
+    fn from(x: Selector_) -> Self {
+        let Selector_(sel) = x;
+        return sel;
+    }
+}
