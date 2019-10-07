@@ -67,3 +67,11 @@ pub struct Crawler {
     pub hits: Vec<String>,
     pub misses: Vec<String>,
 }
+
+
+#[derive(Debug)]
+pub struct SingleCrawl {
+    pub unexhausted_domains: Vec<String>,
+    pub is_hit: bool,
+    pub domain: String,
+}

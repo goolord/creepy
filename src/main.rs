@@ -101,10 +101,13 @@ fn crawl_multi(domains: &Vec<String>, config: &Config) -> Crawler {
     let mut hits: Vec<String> = Vec::new(); // matched predicate
     let mut misses: Vec<String> = Vec::new(); // did not match predicate
     for domain in domains {
-        let mut crawler: Crawler = crawl_single(&domain, config);
-        hits.append(&mut crawler.hits);
-        misses.append(&mut crawler.misses);
-        crawl_multi(&crawler.unexhausted_domains, config);
+        let single_crawl: SingleCrawl = crawl_single(&domain, config);
+        if single_crawl.is_hit {
+            hits.push(single_crawl.domain);
+        } else {
+            misses.push(single_crawl.domain);
+        }
+        crawl_multi(&single_crawl.unexhausted_domains, config);
     }
     return Crawler {
         unexhausted_domains,
@@ -113,9 +116,7 @@ fn crawl_multi(domains: &Vec<String>, config: &Config) -> Crawler {
     };
 }
 
-fn crawl_single(domain: &str, config: &Config) -> Crawler {
-    let mut hits: Vec<String> = Vec::new(); // matched predicate
-    let mut misses: Vec<String> = Vec::new(); // did not match predicate
+fn crawl_single(domain: &str, config: &Config) -> SingleCrawl {
     let mut response: reqwest::Response = reqwest::get(domain).unwrap();
     let body: String = response.text().unwrap();
     let document: Html = Html::parse_document(&body);
@@ -127,6 +128,20 @@ fn crawl_single(domain: &str, config: &Config) -> Crawler {
         None => vec![Selector::parse("a[href]").unwrap()], // default link selector
         Some(selectors) => selectors,
     };
+
+    let is_hit: bool = match &config.match_criteria {
+        Some(hit_selectors) => hit_selectors.into_iter().any(|Selector_(sel)| {
+            let hits = document.select(&sel);
+            return hits.into_iter().next().is_some();
+        }),
+        None => true,
+    };
+    // for hit_selector in &config.match_criteria {
+        // for Selector_(sel) in hit_selector {
+            // let hits = document.select(&sel);
+            // if hits.
+        // }
+    // }
 
     let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
     for sel in link_selectors {
@@ -147,9 +162,9 @@ fn crawl_single(domain: &str, config: &Config) -> Crawler {
 
     sleep(config.period); // polite delay
 
-    return Crawler {
+    return SingleCrawl {
         unexhausted_domains: legs,
-        hits,
-        misses,
+        is_hit,
+        domain: domain.to_owned(),
     };
 }
