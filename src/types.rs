@@ -15,10 +15,10 @@ pub struct Config {
     pub respect_robots_txt: bool,
     #[serde(default)]
     #[serde(skip_serializing)]
-    pub match_criteria: Option<Vec<Selector_>>,
+    pub match_criteria: Option<Vec<StrSelector>>,
     #[serde(default)]
     #[serde(skip_serializing)]
-    pub link_criteria: Option<Vec<Selector_>>,
+    pub link_criteria: Option<Vec<StrSelector>>,
     pub period: Duration,
 }
 
@@ -36,9 +36,9 @@ impl Config {
     }
 }
 
-pub struct Selector_(pub Selector);
+pub struct StrSelector(pub Selector);
 
-impl<'de> Deserialize<'de> for Selector_ {
+impl<'de> Deserialize<'de> for StrSelector {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -50,13 +50,13 @@ impl<'de> Deserialize<'de> for Selector_ {
         let selector: Selector = Selector::parse(&s).expect("Parse error in selector");
 
         // Convert to int and wrap in time
-        Ok(Selector_(selector))
+        Ok(StrSelector(selector))
     }
 }
 
-impl From<Selector_> for Selector {
-    fn from(x: Selector_) -> Self {
-        let Selector_(sel) = x;
+impl From<StrSelector> for Selector {
+    fn from(x: StrSelector) -> Self {
+        let StrSelector(sel) = x;
         return sel;
     }
 }

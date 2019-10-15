@@ -70,9 +70,9 @@ fn main() {
                 match_criteria: Some(Vec::new()),
                 period: Duration::from_secs(1),
             };
-            println!("{}", toml::to_string_pretty(&full_config).unwrap());
             println!("link_criteria = ['a.is-link:not(button)']");
             println!("match_criteria = ['form.is-form']");
+            println!("{}", toml::to_string_pretty(&full_config).unwrap());
         }
     }
 
@@ -90,24 +90,27 @@ fn main() {
             panic!("Your blacklist overrides domains you have set")
         }
         // crawl
-
-        let crawler: Crawler = crawl_multi(&config.domains, &config);
+        let mut visited: Vec<String> = Vec::new(); // visited domains
+        let crawler: Crawler = crawl_multi(&config.domains, &config, &mut visited);
         println!("{:#?}", crawler);
     }
 }
 
-fn crawl_multi(domains: &Vec<String>, config: &Config) -> Crawler {
+fn crawl_multi(domains: &Vec<String>, config: &Config, visited: &mut Vec<String>) -> Crawler {
     let unexhausted_domains: Vec<String> = Vec::new();
     let mut hits: Vec<String> = Vec::new(); // matched predicate
     let mut misses: Vec<String> = Vec::new(); // did not match predicate
     for domain in domains {
-        let single_crawl: SingleCrawl = crawl_single(&domain, config);
-        if single_crawl.is_hit {
-            hits.push(single_crawl.domain);
-        } else {
-            misses.push(single_crawl.domain);
+        if !visited.contains(domain) {
+            let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
+            if single_crawl.is_hit {
+                hits.push(single_crawl.domain);
+            } else {
+                misses.push(single_crawl.domain);
+            }
+            visited.push(domain.to_owned());
+            crawl_multi(&single_crawl.unexhausted_domains, config, visited);
         }
-        crawl_multi(&single_crawl.unexhausted_domains, config);
     }
     return Crawler {
         unexhausted_domains,
@@ -116,32 +119,37 @@ fn crawl_multi(domains: &Vec<String>, config: &Config) -> Crawler {
     };
 }
 
-fn crawl_single(domain: &str, config: &Config) -> SingleCrawl {
-    let mut response: reqwest::Response = reqwest::get(domain).unwrap();
+fn crawl_single(domain: &str, config: &Config, visited: &Vec<String>) -> SingleCrawl {
+    println!("crawling {}", domain);
+    let mut response: reqwest::Response = match reqwest::get(domain) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return SingleCrawl {
+                is_hit: false,
+                domain: domain.to_owned(),
+                unexhausted_domains: Vec::new(),
+            };
+        }
+    };
     let body: String = response.text().unwrap();
     let document: Html = Html::parse_document(&body);
     let user_link_selectors: Option<Vec<Selector>> = config
         .link_criteria
         .as_ref()
-        .map(|x| x.into_iter().map(|Selector_(y)| y.to_owned()).collect());
+        .map(|x| x.into_iter().map(|StrSelector(y)| y.to_owned()).collect());
     let link_selectors = match user_link_selectors {
         None => vec![Selector::parse("a[href]").unwrap()], // default link selector
         Some(selectors) => selectors,
     };
 
     let is_hit: bool = match &config.match_criteria {
-        Some(hit_selectors) => hit_selectors.into_iter().any(|Selector_(sel)| {
+        Some(hit_selectors) => hit_selectors.into_iter().any(|StrSelector(sel)| {
             let hits = document.select(&sel);
             return hits.into_iter().next().is_some();
         }),
         None => true,
     };
-    // for hit_selector in &config.match_criteria {
-        // for Selector_(sel) in hit_selector {
-            // let hits = document.select(&sel);
-            // if hits.
-        // }
-    // }
 
     let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
     for sel in link_selectors {
@@ -150,8 +158,9 @@ fn crawl_single(domain: &str, config: &Config) -> SingleCrawl {
             link.value().attr("href").map(|url| {
                 match Url::parse(url) {
                     Ok(_) => {
-                        if config.valid_domain(url) {
-                            legs.push(url.to_owned())
+                        let url_owned = url.to_owned();
+                        if config.valid_domain(url) && (!visited.contains(&url_owned)) {
+                            legs.push(url_owned)
                         }
                     }
                     Err(_) => (),
