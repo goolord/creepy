@@ -43,8 +43,7 @@ fn main() {
             (@arg default: --default conflicts_with("full") "generate a default configuration")
             (@arg full: --full conflicts_with("default") "generate a full default configuration")
         )
-    )
-    .get_matches();
+    ).get_matches();
 
     // CONFIGURE
     if let Some(configure_matches) = matches.subcommand_matches("configure") {
@@ -57,6 +56,7 @@ fn main() {
                 link_criteria: Some(Vec::new()),
                 match_criteria: Some(Vec::new()),
                 period: Duration::from_secs(0),
+                basic_auth: None,
             };
             println!("{}", toml::to_string_pretty(&default_config).unwrap())
         }
@@ -69,6 +69,10 @@ fn main() {
                 link_criteria: Some(Vec::new()),
                 match_criteria: Some(Vec::new()),
                 period: Duration::from_secs(1),
+                basic_auth: Some(BasicAuthCreds {
+                    user: String::from("username"),
+                    pass: String::from("pass"),
+                }),
             };
             println!("link_criteria = ['a.is-link:not(button)']");
             println!("match_criteria = ['form.is-form']");
@@ -121,15 +125,25 @@ fn crawl_multi(domains: &Vec<String>, config: &Config, visited: &mut Vec<String>
 
 fn crawl_single(domain: &str, config: &Config, visited: &Vec<String>) -> SingleCrawl {
     println!("crawling {}", domain);
-    let mut response: reqwest::Response = match reqwest::get(domain) {
-        Ok(x) => x,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            return SingleCrawl {
-                is_hit: false,
-                domain: domain.to_owned(),
-                unexhausted_domains: Vec::new(),
-            };
+
+    let mut response: reqwest::Response = {
+        let response_e = match &config.basic_auth {
+            Some(auth) => reqwest::Client::new()
+                .get(domain)
+                .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
+                .send(),
+            None => reqwest::get(domain),
+        };
+        match response_e {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return SingleCrawl {
+                    is_hit: false,
+                    domain: domain.to_owned(),
+                    unexhausted_domains: Vec::new(),
+                };
+            }
         }
     };
     let body: String = match response.text() {
@@ -141,7 +155,7 @@ fn crawl_single(domain: &str, config: &Config, visited: &Vec<String>) -> SingleC
                 domain: domain.to_owned(),
                 unexhausted_domains: Vec::new(),
             };
-        },
+        }
     };
     let document: Html = Html::parse_document(&body);
     let user_link_selectors: Option<Vec<Selector>> = config

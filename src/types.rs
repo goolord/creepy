@@ -19,7 +19,14 @@ pub struct Config {
     #[serde(default)]
     #[serde(skip_serializing)]
     pub link_criteria: Option<Vec<StrSelector>>,
+    pub basic_auth: Option<BasicAuthCreds>,
     pub period: Duration,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct BasicAuthCreds {
+    pub user: String,
+    pub pass: String,
 }
 
 impl Config {
@@ -67,7 +74,6 @@ pub struct Crawler {
     pub hits: Vec<String>,
     pub misses: Vec<String>,
 }
-
 
 #[derive(Debug)]
 pub struct SingleCrawl {
