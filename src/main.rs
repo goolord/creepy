@@ -132,7 +132,17 @@ fn crawl_single(domain: &str, config: &Config, visited: &Vec<String>) -> SingleC
             };
         }
     };
-    let body: String = response.text().unwrap();
+    let body: String = match response.text() {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("Error: response text error in {}", e);
+            return SingleCrawl {
+                is_hit: false,
+                domain: domain.to_owned(),
+                unexhausted_domains: Vec::new(),
+            };
+        },
+    };
     let document: Html = Html::parse_document(&body);
     let user_link_selectors: Option<Vec<Selector>> = config
         .link_criteria
