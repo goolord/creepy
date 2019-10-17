@@ -128,7 +128,10 @@ fn crawl_single(domain: &str, config: &Config, visited: &Vec<String>) -> SingleC
 
     let mut response: reqwest::Response = {
         let response_e = match &config.basic_auth {
-            Some(auth) => reqwest::Client::new()
+            Some(auth) => reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .unwrap()
                 .get(domain)
                 .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
                 .send(),
