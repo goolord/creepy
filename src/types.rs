@@ -2,10 +2,11 @@ use regex::Regex;
 use scraper::Selector;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::time::Duration;
+use url::{Url};
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
-    pub domains: Vec<String>,
+    pub domains: Vec<Url>,
     #[serde(default)]
     #[serde(with = "serde_regex")]
     pub blacklist: Vec<Regex>,
@@ -30,16 +31,21 @@ pub struct BasicAuthCreds {
 }
 
 impl Config {
-    pub fn valid_domain(&self, domain: &str) -> bool {
+    pub fn valid_domain(&self, domain: &Url) -> bool {
+        let domain_str = domain.as_str();
         let in_blacklist = self
             .blacklist
             .iter()
-            .fold(false, |acc, rx| rx.is_match(domain) || acc);
+            .fold(false, |acc, rx| rx.is_match(domain_str) || acc);
         let in_whitelist = self
             .whitelist
             .iter()
-            .fold(false, |acc, rx| rx.is_match(domain) || acc);
-        return !in_blacklist || in_whitelist;
+            .fold(false, |acc, rx| rx.is_match(domain_str) || acc);
+        let in_domains = self
+            .domains
+            .iter()
+            .fold(false, |acc, dm| domain.host() == dm.host() || acc);
+        return !in_blacklist || in_whitelist || in_domains;
     }
 }
 
@@ -70,14 +76,14 @@ impl From<StrSelector> for Selector {
 
 #[derive(Debug)]
 pub struct Crawler {
-    pub unexhausted_domains: Vec<String>,
-    pub hits: Vec<String>,
-    pub misses: Vec<String>,
+    pub unexhausted_domains: Vec<Url>,
+    pub hits: Vec<Url>,
+    pub misses: Vec<Url>,
 }
 
 #[derive(Debug)]
 pub struct SingleCrawl {
-    pub unexhausted_domains: Vec<String>,
+    pub unexhausted_domains: Vec<Url>,
     pub is_hit: bool,
-    pub domain: String,
+    pub domain: Url,
 }

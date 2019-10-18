@@ -62,7 +62,7 @@ fn main() {
         }
         if configure_matches.is_present("full") {
             let full_config: Config = Config {
-                domains: vec![String::from("https://github.com/goolord")],
+                domains: vec![Url::parse("https://github.com/goolord").unwrap()],
                 blacklist: vec![Regex::new(".*").unwrap()],
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
                 respect_robots_txt: true,
@@ -94,16 +94,16 @@ fn main() {
             panic!("Your blacklist overrides domains you have set")
         }
         // crawl
-        let mut visited: Vec<String> = Vec::new(); // visited domains
+        let mut visited: Vec<Url> = Vec::new(); // visited domains
         let crawler: Crawler = crawl_multi(&config.domains, &config, &mut visited);
         println!("{:#?}", crawler);
     }
 }
 
-fn crawl_multi(domains: &Vec<String>, config: &Config, visited: &mut Vec<String>) -> Crawler {
-    let unexhausted_domains: Vec<String> = Vec::new();
-    let mut hits: Vec<String> = Vec::new(); // matched predicate
-    let mut misses: Vec<String> = Vec::new(); // did not match predicate
+fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut Vec<Url>) -> Crawler {
+    let unexhausted_domains: Vec<Url> = Vec::new();
+    let mut hits: Vec<Url> = Vec::new(); // matched predicate
+    let mut misses: Vec<Url> = Vec::new(); // did not match predicate
     for domain in domains {
         if !visited.contains(domain) {
             let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
@@ -123,19 +123,22 @@ fn crawl_multi(domains: &Vec<String>, config: &Config, visited: &mut Vec<String>
     };
 }
 
-fn crawl_single(domain: &str, config: &Config, visited: &Vec<String>) -> SingleCrawl {
+fn crawl_single(domain: &Url, config: &Config, visited: &Vec<Url>) -> SingleCrawl {
     println!("crawling {}", domain);
 
+    let domain_str = domain.as_str();
     let mut response: reqwest::Response = {
-        let response_e = match &config.basic_auth {
-            Some(auth) => reqwest::Client::builder()
+        let client = reqwest::Client::builder()
                 .danger_accept_invalid_certs(true)
+                .timeout(Duration::from_secs(5)) // 5 second timeout
                 .build()
                 .unwrap()
-                .get(domain)
+                .get(domain_str);
+        let response_e = match &config.basic_auth {
+            Some(auth) => client
                 .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
                 .send(),
-            None => reqwest::get(domain),
+            None => client.send(),
         };
         match response_e {
             Ok(x) => x,
@@ -178,19 +181,32 @@ fn crawl_single(domain: &str, config: &Config, visited: &Vec<String>) -> SingleC
         None => true,
     };
 
-    let mut legs: Vec<String> = Vec::new(); // additional domains to crawl
+    let mut legs: Vec<Url> = Vec::new(); // additional domains to crawl
     for sel in link_selectors {
         let links = document.select(&sel);
         for link in links.into_iter() {
             link.value().attr("href").map(|url| {
                 match Url::parse(url) {
-                    Ok(_) => {
-                        let url_owned = url.to_owned();
-                        if config.valid_domain(url) && (!visited.contains(&url_owned)) {
-                            legs.push(url_owned)
+                    Ok(url_parsed) => {
+                        if config.valid_domain(&url_parsed) && (!visited.contains(&url_parsed)) {
+                            legs.push(url_parsed)
                         }
+                    },
+                    Err(e) => match e {
+                        url::ParseError::RelativeUrlWithoutBase => match url.chars().next() {
+                            Some('#') => (),
+                            Some(_) => match Url::parse(&format!("{}://{}{}", domain.scheme(), domain.host_str().unwrap_or("EMPTY"), url)) {
+                                Ok(url_parsed) => {
+                                    if config.valid_domain(&url_parsed) && (!visited.contains(&url_parsed)) {
+                                        legs.push(url_parsed)
+                                    }
+                                },
+                                _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
+                            },
+                            None => (),
+                        },
+                        _ => eprintln!("Could not parse URL \"{}\": {}", url, e)
                     }
-                    Err(_) => (),
                 };
             });
         }
