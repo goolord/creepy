@@ -36,15 +36,15 @@ impl Config {
         let in_blacklist = self
             .blacklist
             .iter()
-            .fold(false, |acc, rx| rx.is_match(domain_str) || acc);
+            .any(|rx| rx.is_match(domain_str));
         let in_whitelist = self
             .whitelist
             .iter()
-            .fold(false, |acc, rx| rx.is_match(domain_str) || acc);
+            .any(|rx| rx.is_match(domain_str));
         let in_domains = self
             .domains
             .iter()
-            .fold(false, |acc, dm| domain.host() == dm.host() || acc);
+            .any(|dm| domain.host() == dm.host());
         return !in_blacklist || in_whitelist || in_domains;
     }
 }

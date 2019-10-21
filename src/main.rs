@@ -193,7 +193,7 @@ fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) ->
                     Ok(url_parsed) => {
                         let valid_domain = config.valid_domain(&url_parsed);
                         let pu = PartialUrl(url_parsed);
-                        if valid_domain && (!visited.contains(&pu)) {
+                        if valid_domain && !visited.contains(&pu) {
                             legs.push(pu.0)
                         }
                     }
