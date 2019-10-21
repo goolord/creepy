@@ -3,6 +3,7 @@ use scraper::Selector;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::time::Duration;
 use url::Url;
+use ref_cast::RefCast;
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
@@ -13,15 +14,16 @@ pub struct Config {
     #[serde(default)]
     #[serde(with = "serde_regex")]
     pub whitelist: Vec<Regex>,
+    #[serde(default)]
     #[serde(with = "serde_regex")]
     pub super_blacklist: Vec<Regex>,
     pub respect_robots_txt: bool,
     #[serde(default)]
     #[serde(skip_serializing)]
-    pub match_criteria: Option<Vec<StrSelector>>,
+    pub match_criteria: Option<StrSelector>,
     #[serde(default)]
     #[serde(skip_serializing)]
-    pub link_criteria: Option<Vec<StrSelector>>,
+    pub link_criteria: Option<StrSelector>,
     pub basic_auth: Option<BasicAuthCreds>,
     pub period: Duration,
 }
@@ -55,6 +57,8 @@ impl Config {
     }
 }
 
+#[derive(RefCast)]
+#[repr(transparent)]
 pub struct StrSelector(pub Selector);
 
 impl<'de> Deserialize<'de> for StrSelector {
@@ -68,7 +72,6 @@ impl<'de> Deserialize<'de> for StrSelector {
         // Parse individual components
         let selector: Selector = Selector::parse(&s).expect("Parse error in selector");
 
-        // Convert to int and wrap in time
         Ok(StrSelector(selector))
     }
 }
@@ -94,7 +97,8 @@ pub struct SingleCrawl {
     pub domain: Url,
 }
 
-#[derive(Hash)]
+#[derive(Hash, RefCast)]
+#[repr(transparent)]
 pub struct PartialUrl(pub Url);
 
 impl PartialEq for PartialUrl {
@@ -105,3 +109,8 @@ impl PartialEq for PartialUrl {
 }
 
 impl Eq for PartialUrl {}
+
+pub enum Hit {
+    Hit(Url),
+    Miss(Url),
+}

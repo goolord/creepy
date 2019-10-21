@@ -7,6 +7,7 @@ extern crate select;
 extern crate serde;
 extern crate serde_regex;
 extern crate url;
+extern crate ref_cast;
 mod types;
 use regex::Regex;
 use scraper::{Html, Selector};
@@ -17,6 +18,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use types::*;
 use url::Url;
+use ref_cast::RefCast;
 
 fn read_file_contents(file_name: &str) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
@@ -56,8 +58,8 @@ fn main() {
                 whitelist: Vec::new(),
                 super_blacklist: Vec::new(),
                 respect_robots_txt: false,
-                link_criteria: Some(Vec::new()),
-                match_criteria: Some(Vec::new()),
+                link_criteria: None,
+                match_criteria: None,
                 period: Duration::from_secs(0),
                 basic_auth: None,
             };
@@ -70,16 +72,16 @@ fn main() {
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
                 super_blacklist: vec![],
                 respect_robots_txt: true,
-                link_criteria: Some(Vec::new()),
-                match_criteria: Some(Vec::new()),
+                link_criteria: Some(StrSelector(Selector::parse("a[href]").unwrap())),
+                match_criteria: Some(StrSelector(Selector::parse("form").unwrap())),
                 period: Duration::from_secs(1),
                 basic_auth: Some(BasicAuthCreds {
                     user: String::from("username"),
                     pass: String::from("pass"),
                 }),
             };
-            println!("link_criteria = ['a.is-link:not(button)']");
-            println!("match_criteria = ['form.is-form']");
+            println!("link_criteria = 'a.is-link:not(button)'");
+            println!("match_criteria = 'form.is-form'");
             println!("{}", toml::to_string_pretty(&full_config).unwrap());
         }
     }
@@ -109,7 +111,7 @@ fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut HashSet<Partia
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
     for domain in domains {
-        if !visited.contains(&PartialUrl(domain.to_owned())) {
+        if !visited.contains(PartialUrl::ref_cast(domain)) {
             let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
             if single_crawl.is_hit {
                 hits.push(single_crawl.domain);
@@ -169,20 +171,16 @@ fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) ->
         }
     };
     let document: Html = Html::parse_document(&body);
-    let user_link_selectors: Option<Vec<Selector>> = config
-        .link_criteria
-        .as_ref()
-        .map(|x| x.into_iter().map(|StrSelector(y)| y.to_owned()).collect());
-    let link_selectors = match user_link_selectors {
-        None => vec![Selector::parse("a[href]").unwrap()], // default link selector
-        Some(selectors) => selectors,
+    let link_selector = match &config.link_criteria {
+        None => Selector::parse("a[href]").unwrap(), // default link selector
+        Some(selector) => selector.0.to_owned(),
     };
 
     let is_hit: bool = match &config.match_criteria {
-        Some(hit_selectors) => hit_selectors.into_iter().any(|StrSelector(sel)| {
+        Some(StrSelector(sel)) => {
             let hits = document.select(&sel);
-            return hits.into_iter().next().is_some();
-        }),
+            hits.into_iter().next().is_some()
+        },
         None => true,
     };
 
@@ -196,31 +194,29 @@ fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) ->
         }
     };
 
-    for sel in link_selectors {
-        let links = document.select(&sel);
-        for link in links.into_iter() {
-            link.value().attr("href").map(|url| {
-                match Url::parse(url) {
-                    Ok(url_parsed) => push_url(url_parsed),
-                    Err(e) => match e {
-                        url::ParseError::RelativeUrlWithoutBase => match url.chars().next() {
-                            Some('#') => (),
-                            Some(_) => match Url::parse(&format!(
-                                "{}://{}{}",
-                                domain.scheme(),
-                                domain.host_str().unwrap_or("EMPTY"),
-                                url
-                            )) {
-                                Ok(url_parsed) => push_url(url_parsed),
-                                _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
-                            },
-                            None => (),
+    let links = document.select(&link_selector);
+    for link in links.into_iter() {
+        link.value().attr("href").map(|url| {
+            match Url::parse(url) {
+                Ok(url_parsed) => push_url(url_parsed),
+                Err(e) => match e {
+                    url::ParseError::RelativeUrlWithoutBase => match url.chars().next() {
+                        Some('#') => (),
+                        Some(_) => match Url::parse(&format!(
+                            "{}://{}{}",
+                            domain.scheme(),
+                            domain.host_str().unwrap_or("EMPTY"),
+                            url
+                        )) {
+                            Ok(url_parsed) => push_url(url_parsed),
+                            _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
                         },
-                        _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
+                        None => (),
                     },
-                };
-            });
-        }
+                    _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
+                },
+            };
+        });
     }
 
     sleep(config.period); // polite delay
