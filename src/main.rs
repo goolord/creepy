@@ -105,7 +105,7 @@ fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut Vec<Url>) -> C
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
     for domain in domains {
-        if !visited.contains(domain) {
+        if !visited.iter().any(|url| url.host() == domain.host() && url.path() == domain.path()) {
             let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
             if single_crawl.is_hit {
                 hits.push(single_crawl.domain);
@@ -133,7 +133,8 @@ fn crawl_single(domain: &Url, config: &Config, visited: &Vec<Url>) -> SingleCraw
                 .timeout(Duration::from_secs(5)) // 5 second timeout
                 .build()
                 .unwrap()
-                .get(domain_str);
+                .get(domain_str)
+                .header("ACCEPT", "test/*");
         let response_e = match &config.basic_auth {
             Some(auth) => client
                 .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
