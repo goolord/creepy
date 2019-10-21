@@ -43,7 +43,8 @@ fn main() {
             (@arg default: --default conflicts_with("full") "generate a default configuration")
             (@arg full: --full conflicts_with("default") "generate a full default configuration")
         )
-    ).get_matches();
+    )
+    .get_matches();
 
     // CONFIGURE
     if let Some(configure_matches) = matches.subcommand_matches("configure") {
@@ -105,7 +106,10 @@ fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut Vec<Url>) -> C
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
     for domain in domains {
-        if !visited.iter().any(|url| url.host() == domain.host() && url.path() == domain.path()) {
+        if !visited
+            .iter()
+            .any(|url| url.host() == domain.host() && url.path() == domain.path())
+        {
             let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
             if single_crawl.is_hit {
                 hits.push(single_crawl.domain);
@@ -129,12 +133,12 @@ fn crawl_single(domain: &Url, config: &Config, visited: &Vec<Url>) -> SingleCraw
     let domain_str = domain.as_str();
     let mut response: reqwest::Response = {
         let client = reqwest::Client::builder()
-                .danger_accept_invalid_certs(true)
-                .timeout(Duration::from_secs(5)) // 5 second timeout
-                .build()
-                .unwrap()
-                .get(domain_str)
-                .header("ACCEPT", "test/*");
+            .danger_accept_invalid_certs(true)
+            .timeout(Duration::from_secs(8)) // 8 second timeout
+            .build()
+            .unwrap()
+            .get(domain_str)
+            .header("ACCEPT", "text/*");
         let response_e = match &config.basic_auth {
             Some(auth) => client
                 .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
@@ -192,22 +196,29 @@ fn crawl_single(domain: &Url, config: &Config, visited: &Vec<Url>) -> SingleCraw
                         if config.valid_domain(&url_parsed) && (!visited.contains(&url_parsed)) {
                             legs.push(url_parsed)
                         }
-                    },
+                    }
                     Err(e) => match e {
                         url::ParseError::RelativeUrlWithoutBase => match url.chars().next() {
                             Some('#') => (),
-                            Some(_) => match Url::parse(&format!("{}://{}{}", domain.scheme(), domain.host_str().unwrap_or("EMPTY"), url)) {
+                            Some(_) => match Url::parse(&format!(
+                                "{}://{}{}",
+                                domain.scheme(),
+                                domain.host_str().unwrap_or("EMPTY"),
+                                url
+                            )) {
                                 Ok(url_parsed) => {
-                                    if config.valid_domain(&url_parsed) && (!visited.contains(&url_parsed)) {
+                                    if config.valid_domain(&url_parsed)
+                                        && (!visited.contains(&url_parsed))
+                                    {
                                         legs.push(url_parsed)
                                     }
-                                },
+                                }
                                 _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
                             },
                             None => (),
                         },
-                        _ => eprintln!("Could not parse URL \"{}\": {}", url, e)
-                    }
+                        _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
+                    },
                 };
             });
         }

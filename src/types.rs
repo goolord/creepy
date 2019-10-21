@@ -2,7 +2,7 @@ use regex::Regex;
 use scraper::Selector;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::time::Duration;
-use url::{Url};
+use url::Url;
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
