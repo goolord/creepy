@@ -13,6 +13,8 @@ pub struct Config {
     #[serde(default)]
     #[serde(with = "serde_regex")]
     pub whitelist: Vec<Regex>,
+    #[serde(with = "serde_regex")]
+    pub super_blacklist: Vec<Regex>,
     pub respect_robots_txt: bool,
     #[serde(default)]
     #[serde(skip_serializing)]
@@ -45,7 +47,11 @@ impl Config {
             .domains
             .iter()
             .any(|dm| domain.host() == dm.host());
-        return !in_blacklist || in_whitelist || in_domains;
+        let in_super_blacklist = self
+            .super_blacklist
+            .iter()
+            .any(|rx| rx.is_match(domain_str));
+        return (!in_blacklist || in_whitelist || in_domains) && !in_super_blacklist;
     }
 }
 
@@ -93,7 +99,8 @@ pub struct PartialUrl(pub Url);
 
 impl PartialEq for PartialUrl {
     fn eq(&self, other: &Self) -> bool {
-        self.0.host() == other.0.host() && self.0.path() == self.0.path()
+           self.0.host() == other.0.host() 
+        && self.0.path() == other.0.path()
     }
 }
 

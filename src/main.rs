@@ -54,6 +54,7 @@ fn main() {
                 domains: Vec::new(),
                 blacklist: Vec::new(),
                 whitelist: Vec::new(),
+                super_blacklist: Vec::new(),
                 respect_robots_txt: false,
                 link_criteria: Some(Vec::new()),
                 match_criteria: Some(Vec::new()),
@@ -67,6 +68,7 @@ fn main() {
                 domains: vec![Url::parse("https://github.com/goolord").unwrap()],
                 blacklist: vec![Regex::new(".*").unwrap()],
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
+                super_blacklist: vec![],
                 respect_robots_txt: true,
                 link_criteria: Some(Vec::new()),
                 match_criteria: Some(Vec::new()),
@@ -136,7 +138,7 @@ fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) ->
             .build()
             .unwrap()
             .get(domain_str)
-            .header("ACCEPT", "text/*");
+            .header("ACCEPT", "text/html");
         let response_e = match &config.basic_auth {
             Some(auth) => client
                 .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
@@ -185,18 +187,21 @@ fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) ->
     };
 
     let mut legs: Vec<Url> = Vec::new(); // additional domains to crawl
+
+    let mut push_url = |url: Url| {
+        let valid_domain = config.valid_domain(&url);
+        let pu = PartialUrl(url);
+        if valid_domain && !visited.contains(&pu) {
+            legs.push(pu.0)
+        }
+    };
+
     for sel in link_selectors {
         let links = document.select(&sel);
         for link in links.into_iter() {
             link.value().attr("href").map(|url| {
                 match Url::parse(url) {
-                    Ok(url_parsed) => {
-                        let valid_domain = config.valid_domain(&url_parsed);
-                        let pu = PartialUrl(url_parsed);
-                        if valid_domain && !visited.contains(&pu) {
-                            legs.push(pu.0)
-                        }
-                    }
+                    Ok(url_parsed) => push_url(url_parsed),
                     Err(e) => match e {
                         url::ParseError::RelativeUrlWithoutBase => match url.chars().next() {
                             Some('#') => (),
@@ -206,13 +211,7 @@ fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) ->
                                 domain.host_str().unwrap_or("EMPTY"),
                                 url
                             )) {
-                                Ok(url_parsed) => {
-                                    let valid_domain = config.valid_domain(&url_parsed);
-                                    let pu = PartialUrl(url_parsed);
-                                    if valid_domain && (!visited.contains(&pu)) {
-                                        legs.push(pu.0)
-                                    }
-                                }
+                                Ok(url_parsed) => push_url(url_parsed),
                                 _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
                             },
                             None => (),
@@ -232,3 +231,4 @@ fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) ->
         domain: domain.to_owned(),
     };
 }
+
