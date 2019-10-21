@@ -87,3 +87,14 @@ pub struct SingleCrawl {
     pub is_hit: bool,
     pub domain: Url,
 }
+
+#[derive(Hash)]
+pub struct PartialUrl(pub Url);
+
+impl PartialEq for PartialUrl {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.host() == other.0.host() && self.0.path() == self.0.path()
+    }
+}
+
+impl Eq for PartialUrl {}

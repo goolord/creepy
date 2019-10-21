@@ -10,6 +10,7 @@ extern crate url;
 mod types;
 use regex::Regex;
 use scraper::{Html, Selector};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::prelude::*;
 use std::thread::sleep;
@@ -95,28 +96,25 @@ fn main() {
             panic!("Your blacklist overrides domains you have set")
         }
         // crawl
-        let mut visited: Vec<Url> = Vec::new(); // visited domains
+        let mut visited: HashSet<PartialUrl> = HashSet::new(); // visited domains
         let crawler: Crawler = crawl_multi(&config.domains, &config, &mut visited);
         println!("{:#?}", crawler);
     }
 }
 
-fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut Vec<Url>) -> Crawler {
+fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut HashSet<PartialUrl>) -> Crawler {
     let unexhausted_domains: Vec<Url> = Vec::new();
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
     for domain in domains {
-        if !visited
-            .iter()
-            .any(|url| url.host() == domain.host() && url.path() == domain.path())
-        {
+        if !visited.contains(&PartialUrl(domain.to_owned())) {
             let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
             if single_crawl.is_hit {
                 hits.push(single_crawl.domain);
             } else {
                 misses.push(single_crawl.domain);
             }
-            visited.push(domain.to_owned());
+            visited.insert(PartialUrl(domain.to_owned()));
             crawl_multi(&single_crawl.unexhausted_domains, config, visited);
         }
     }
@@ -127,7 +125,7 @@ fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut Vec<Url>) -> C
     };
 }
 
-fn crawl_single(domain: &Url, config: &Config, visited: &Vec<Url>) -> SingleCrawl {
+fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) -> SingleCrawl {
     println!("crawling {}", domain);
 
     let domain_str = domain.as_str();
@@ -193,8 +191,10 @@ fn crawl_single(domain: &Url, config: &Config, visited: &Vec<Url>) -> SingleCraw
             link.value().attr("href").map(|url| {
                 match Url::parse(url) {
                     Ok(url_parsed) => {
-                        if config.valid_domain(&url_parsed) && (!visited.contains(&url_parsed)) {
-                            legs.push(url_parsed)
+                        let valid_domain = config.valid_domain(&url_parsed);
+                        let pu = PartialUrl(url_parsed);
+                        if valid_domain && (!visited.contains(&pu)) {
+                            legs.push(pu.0)
                         }
                     }
                     Err(e) => match e {
@@ -207,10 +207,10 @@ fn crawl_single(domain: &Url, config: &Config, visited: &Vec<Url>) -> SingleCraw
                                 url
                             )) {
                                 Ok(url_parsed) => {
-                                    if config.valid_domain(&url_parsed)
-                                        && (!visited.contains(&url_parsed))
-                                    {
-                                        legs.push(url_parsed)
+                                    let valid_domain = config.valid_domain(&url_parsed);
+                                    let pu = PartialUrl(url_parsed);
+                                    if valid_domain && (!visited.contains(&pu)) {
+                                        legs.push(pu.0)
                                     }
                                 }
                                 _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
