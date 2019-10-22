@@ -1,14 +1,15 @@
 #[macro_use]
 extern crate clap;
 extern crate html5ever;
+extern crate ref_cast;
 extern crate reqwest;
 extern crate scraper;
 extern crate select;
 extern crate serde;
 extern crate serde_regex;
 extern crate url;
-extern crate ref_cast;
 mod types;
+use ref_cast::RefCast;
 use regex::Regex;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
@@ -18,7 +19,6 @@ use std::thread::sleep;
 use std::time::Duration;
 use types::*;
 use url::Url;
-use ref_cast::RefCast;
 
 fn read_file_contents(file_name: &str) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
@@ -111,7 +111,7 @@ fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<Partial
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
     for domain in domains {
-        if !visited.contains(PartialUrl::ref_cast(domain)) {
+        if !visited.contains(PartialUrl::ref_cast(&domain)) {
             let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
             if single_crawl.is_hit {
                 hits.push(single_crawl.domain);
@@ -188,9 +188,8 @@ fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>
 
     let mut push_url = |url: Url| {
         let valid_domain = config.valid_domain(&url);
-        let pu = PartialUrl(url);
-        if valid_domain && !visited.contains(&pu) {
-            legs.push(pu.0)
+        if valid_domain && !visited.contains(PartialUrl::ref_cast(&url)) {
+            legs.push(url)
         }
     };
 
