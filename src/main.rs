@@ -70,7 +70,7 @@ fn main() {
                 domains: vec![Url::parse("https://github.com/goolord").unwrap()],
                 blacklist: vec![Regex::new(".*").unwrap()],
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
-                super_blacklist: vec![],
+                super_blacklist: vec![Regex::new(".*\\.jpg").unwrap()],
                 respect_robots_txt: true,
                 link_criteria: Some(StrSelector(Selector::parse("a[href]").unwrap())),
                 match_criteria: Some(StrSelector(Selector::parse("form").unwrap())),
@@ -110,9 +110,18 @@ fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<Partial
     let unexhausted_domains: Vec<Url> = Vec::new();
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
+    let link_selector = match &config.link_criteria {
+        None => Selector::parse("a[href]").unwrap(), // default link selector
+        Some(selector) => selector.0.to_owned(),
+    };
+    let client: reqwest::Client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .timeout(Duration::from_secs(8)) // 8 second timeout
+        .build()
+        .unwrap();
     for domain in domains {
         if !visited.contains(PartialUrl::ref_cast(&domain)) {
-            let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
+            let single_crawl: SingleCrawl = crawl_single(&domain, config, &client, &link_selector, visited);
             if single_crawl.is_hit {
                 hits.push(domain.to_owned());
             } else {
@@ -129,23 +138,26 @@ fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<Partial
     };
 }
 
-fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>) -> SingleCrawl {
+fn crawl_single( domain: &Url
+               , config: &Config
+               , client: &reqwest::Client
+               , link_selector: &Selector
+               , visited: &mut HashSet<PartialUrl>
+               ) -> SingleCrawl {
     println!("crawling {}", domain);
 
     let domain_str = domain.as_str();
     let mut response: reqwest::Response = {
-        let client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(Duration::from_secs(8)) // 8 second timeout
-            .build()
-            .unwrap()
-            .get(domain_str)
-            .header("ACCEPT", "text/html");
         let response_e = match &config.basic_auth {
             Some(auth) => client
+                .get(domain_str)
+                .header("ACCEPT", "text/html")
                 .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
                 .send(),
-            None => client.send(),
+            None => client
+                .get(domain_str)
+                .header("ACCEPT", "text/html")
+                .send(),
         };
         match response_e {
             Ok(x) => x,
@@ -169,10 +181,6 @@ fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>
         }
     };
     let document: Html = Html::parse_document(&body);
-    let link_selector = match &config.link_criteria {
-        None => Selector::parse("a[href]").unwrap(), // default link selector
-        Some(selector) => selector.0.to_owned(),
-    };
 
     let is_hit: bool = match &config.match_criteria {
         Some(StrSelector(sel)) => {
@@ -191,7 +199,7 @@ fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>
         }
     };
 
-    let links = document.select(&link_selector);
+    let links = document.select(link_selector);
     for link in links.into_iter() {
         link.value().attr("href").map(|url| {
             match Url::parse(url) {
