@@ -101,12 +101,12 @@ fn main() {
         }
         // crawl
         let mut visited: HashSet<PartialUrl> = HashSet::new(); // visited domains
-        let crawler: Crawler = crawl_multi(&config.domains, &config, &mut visited);
+        let crawler: Crawler = crawl_multi(config.domains.clone(), &config, &mut visited);
         println!("{:#?}", crawler);
     }
 }
 
-fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut HashSet<PartialUrl>) -> Crawler {
+fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<PartialUrl>) -> Crawler {
     let unexhausted_domains: Vec<Url> = Vec::new();
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
@@ -118,8 +118,8 @@ fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut HashSet<Partia
             } else {
                 misses.push(single_crawl.domain);
             }
-            visited.insert(PartialUrl(domain.to_owned()));
-            crawl_multi(&single_crawl.unexhausted_domains, config, visited);
+            visited.insert(PartialUrl(domain));
+            crawl_multi(single_crawl.unexhausted_domains, config, visited);
         }
     }
     return Crawler {
@@ -129,7 +129,7 @@ fn crawl_multi(domains: &Vec<Url>, config: &Config, visited: &mut HashSet<Partia
     };
 }
 
-fn crawl_single(domain: &Url, config: &Config, visited: &HashSet<PartialUrl>) -> SingleCrawl {
+fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>) -> SingleCrawl {
     println!("crawling {}", domain);
 
     let domain_str = domain.as_str();

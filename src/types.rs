@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::time::Duration;
 use url::Url;
 use ref_cast::RefCast;
+use std::hash::{Hash, Hasher};
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
@@ -97,7 +98,7 @@ pub struct SingleCrawl {
     pub domain: Url,
 }
 
-#[derive(Hash, RefCast)]
+#[derive(RefCast)]
 #[repr(transparent)]
 pub struct PartialUrl(pub Url);
 
@@ -108,9 +109,12 @@ impl PartialEq for PartialUrl {
     }
 }
 
+impl Hash for PartialUrl {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.host().hash(state);
+        self.0.path().hash(state);
+    }
+}
+
 impl Eq for PartialUrl {}
 
-pub enum Hit {
-    Hit(Url),
-    Miss(Url),
-}
