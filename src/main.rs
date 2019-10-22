@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate clap;
 extern crate html5ever;
+extern crate rayon;
 extern crate ref_cast;
 extern crate reqwest;
 extern crate scraper;
@@ -9,12 +10,15 @@ extern crate serde;
 extern crate serde_regex;
 extern crate url;
 mod types;
+use rayon::prelude::*;
 use ref_cast::RefCast;
 use regex::Regex;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::fs::File;
+use std::hash::{Hash};
 use std::io::prelude::*;
+use std::iter::FromIterator;
 use std::thread::sleep;
 use std::time::Duration;
 use types::*;
@@ -30,6 +34,18 @@ fn read_file_contents(file_name: &str) -> std::io::Result<String> {
 fn decode_toml<D: serde::de::DeserializeOwned>(file_name: &str) -> Result<D, toml::de::Error> {
     let contents = read_file_contents(file_name).expect("Could not read toml file");
     return toml::from_str(&contents);
+}
+
+fn singleton_hashset<A>(item: A) -> HashSet<A> 
+    where A: Eq + Hash, {
+    let mut set = HashSet::new();
+    set.insert(item);
+    return set;
+}
+
+fn vec_to_set<A>(vec: Vec<A>) -> HashSet<A> 
+    where A: Eq + Hash, {
+    HashSet::from_iter(vec)
 }
 
 fn main() {
@@ -52,7 +68,7 @@ fn main() {
     if let Some(configure_matches) = matches.subcommand_matches("configure") {
         if configure_matches.is_present("default") {
             let default_config: Config = Config {
-                domains: Vec::new(),
+                domains: HashSet::new(),
                 blacklist: Vec::new(),
                 whitelist: Vec::new(),
                 super_blacklist: Vec::new(),
@@ -66,7 +82,7 @@ fn main() {
         }
         if configure_matches.is_present("full") {
             let full_config: Config = Config {
-                domains: vec![Url::parse("https://github.com/goolord").unwrap()],
+                domains: singleton_hashset(PartialUrl(Url::parse("https://github.com/goolord").unwrap())),
                 blacklist: vec![Regex::new(".*").unwrap()],
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
                 super_blacklist: vec![Regex::new(".*\\.jpg").unwrap()],
@@ -94,52 +110,51 @@ fn main() {
         if config
             .domains
             .iter()
-            .any(|domain| !config.valid_domain(domain))
+            .any(|domain| !config.valid_domain(&domain.0))
         {
             panic!("Your blacklist overrides domains you have set")
         }
         // crawl
         let mut visited: HashSet<PartialUrl> = HashSet::new(); // visited domains
-        let crawler: Crawler = crawl_multi(config.domains.clone(), &config, &mut visited);
-        println!("{:#?}", crawler);
+        let link_selector = match &config.link_criteria {
+            None => Selector::parse("a[href]").unwrap(), // default link selector
+            Some(selector) => selector.0.to_owned(),
+        };
+        let client: reqwest::Client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .timeout(Duration::from_secs(8)) // 8 second timeout
+            .build()
+            .unwrap();
+        let crawler: Vec<PartialUrl> = crawl_multi(config.domains.to_owned(), &config, &link_selector, &client, &mut visited);
+        println!("{}", crawler.iter().fold(String::new(), |acc, x| acc + "\n" + x.0.as_str()));
     }
 }
 
 fn crawl_multi
-    ( domains: Vec<Url>
+    ( domains: HashSet<PartialUrl>
     , config: &Config
+    , link_selector: &Selector
+    , client: &reqwest::Client
     , visited: &mut HashSet<PartialUrl>
-    ) -> Crawler {
-    let unexhausted_domains: Vec<Url> = Vec::new();
-    let mut hits: Vec<Url> = Vec::new(); // matched predicate
-    let mut misses: Vec<Url> = Vec::new(); // did not match predicate
-    let link_selector = match &config.link_criteria {
-        None => Selector::parse("a[href]").unwrap(), // default link selector
-        Some(selector) => selector.0.to_owned(),
-    };
-    let client: reqwest::Client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .timeout(Duration::from_secs(8)) // 8 second timeout
-        .build()
-        .unwrap();
-    for domain in domains {
-        if !visited.contains(PartialUrl::ref_cast(&domain)) {
-            let single_crawl: SingleCrawl =
-                crawl_single(&domain, config, &client, &link_selector, visited);
-            if single_crawl.is_hit {
-                hits.push(domain.to_owned());
-            } else {
-                misses.push(domain.to_owned());
-            }
-            visited.insert(PartialUrl(domain));
-            crawl_multi(single_crawl.unexhausted_domains, config, visited);
+    ) -> Vec<PartialUrl> {
+    // let mut hits: Vec<Url> = Vec::new(); // matched predicate
+    let single_crawls: HashSet<SingleCrawl> = domains.par_iter().filter_map(|domain| {
+        if !visited.contains(PartialUrl::ref_cast(&domain.0)) {
+            return Some(crawl_single(&domain.0, config, client, link_selector, visited));
+        } else {
+            return None;
         }
+    }).collect();
+    visited.union(&domains);
+    let mut hits = Vec::new();
+    for crawl in single_crawls.into_iter() {
+        if crawl.is_hit {
+            hits.push(PartialUrl(crawl.domain));
+        }
+        let mut new_hits = crawl_multi(vec_to_set(crawl.unexhausted_domains), config, link_selector, client, visited);
+        hits.append(&mut new_hits);
     }
-    return Crawler {
-        unexhausted_domains,
-        hits,
-        misses,
-    };
+    return hits;
 }
 
 fn crawl_single
@@ -147,7 +162,7 @@ fn crawl_single
     , config: &Config
     , client: &reqwest::Client
     , link_selector: &Selector
-    , visited: &mut HashSet<PartialUrl>
+    , visited: &HashSet<PartialUrl>
     ) -> SingleCrawl {
     println!("crawling {}", domain);
     let domain_str = domain.as_str();
@@ -165,6 +180,7 @@ fn crawl_single
             Err(e) => {
                 eprintln!("Error: {}", e);
                 return SingleCrawl {
+                    domain: domain.to_owned(),
                     is_hit: false,
                     unexhausted_domains: Vec::new(),
                 };
@@ -176,6 +192,7 @@ fn crawl_single
         Err(e) => {
             eprintln!("Error: response text error in {}", e);
             return SingleCrawl {
+                domain: domain.to_owned(),
                 is_hit: false,
                 unexhausted_domains: Vec::new(),
             };
@@ -191,12 +208,12 @@ fn crawl_single
         None => true,
     };
 
-    let mut legs: Vec<Url> = Vec::new(); // additional domains to crawl
+    let mut legs: Vec<PartialUrl> = Vec::new(); // additional domains to crawl
 
     let mut push_url = |url: Url| {
         let valid_domain = config.valid_domain(&url);
         if valid_domain && !visited.contains(PartialUrl::ref_cast(&url)) {
-            legs.push(url)
+            legs.push(PartialUrl(url))
         }
     };
 
@@ -228,6 +245,7 @@ fn crawl_single
     sleep(config.period); // polite delay
 
     return SingleCrawl {
+        domain: domain.to_owned(),
         unexhausted_domains: legs,
         is_hit,
     };
