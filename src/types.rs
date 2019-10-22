@@ -77,13 +77,6 @@ impl<'de> Deserialize<'de> for StrSelector {
     }
 }
 
-impl From<StrSelector> for Selector {
-    fn from(x: StrSelector) -> Self {
-        let StrSelector(sel) = x;
-        return sel;
-    }
-}
-
 #[derive(Debug)]
 pub struct Crawler {
     pub unexhausted_domains: Vec<Url>,
@@ -95,7 +88,6 @@ pub struct Crawler {
 pub struct SingleCrawl {
     pub unexhausted_domains: Vec<Url>,
     pub is_hit: bool,
-    pub domain: Url,
 }
 
 #[derive(RefCast)]

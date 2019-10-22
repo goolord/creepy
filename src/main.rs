@@ -114,9 +114,9 @@ fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<Partial
         if !visited.contains(PartialUrl::ref_cast(&domain)) {
             let single_crawl: SingleCrawl = crawl_single(&domain, config, visited);
             if single_crawl.is_hit {
-                hits.push(single_crawl.domain);
+                hits.push(domain.to_owned());
             } else {
-                misses.push(single_crawl.domain);
+                misses.push(domain.to_owned());
             }
             visited.insert(PartialUrl(domain));
             crawl_multi(single_crawl.unexhausted_domains, config, visited);
@@ -153,7 +153,6 @@ fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>
                 eprintln!("Error: {}", e);
                 return SingleCrawl {
                     is_hit: false,
-                    domain: domain.to_owned(),
                     unexhausted_domains: Vec::new(),
                 };
             }
@@ -165,7 +164,6 @@ fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>
             eprintln!("Error: response text error in {}", e);
             return SingleCrawl {
                 is_hit: false,
-                domain: domain.to_owned(),
                 unexhausted_domains: Vec::new(),
             };
         }
@@ -223,7 +221,6 @@ fn crawl_single(domain: &Url, config: &Config, visited: &mut HashSet<PartialUrl>
     return SingleCrawl {
         unexhausted_domains: legs,
         is_hit,
-        domain: domain.to_owned(),
     };
 }
 
