@@ -138,14 +138,10 @@ fn crawl_multi
     , visited: &mut HashSet<PartialUrl>
     ) -> Vec<PartialUrl> {
     // let mut hits: Vec<Url> = Vec::new(); // matched predicate
-    let single_crawls: HashSet<SingleCrawl> = domains.par_iter().filter_map(|domain| {
-        if !visited.contains(PartialUrl::ref_cast(&domain.0)) {
-            return Some(crawl_single(&domain.0, config, client, link_selector, visited));
-        } else {
-            return None;
-        }
-    }).collect();
     visited.union(&domains);
+    let single_crawls: HashSet<SingleCrawl> = domains.par_iter().map(|domain| {
+        return crawl_single(&domain.0, config, client, link_selector, visited);
+    }).collect();
     let mut hits = Vec::new();
     for crawl in single_crawls.into_iter() {
         if crawl.is_hit {
