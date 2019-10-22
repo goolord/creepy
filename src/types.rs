@@ -5,10 +5,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use url::Url;
+use std::collections::HashSet;
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
-    pub domains: Vec<Url>,
+    pub domains: HashSet<PartialUrl>,
     #[serde(default)]
     #[serde(with = "serde_regex")]
     pub blacklist: Vec<Regex>,
@@ -40,7 +41,7 @@ impl Config {
         let domain_str = domain.as_str();
         let in_blacklist = self.blacklist.iter().any(|rx| rx.is_match(domain_str));
         let in_whitelist = self.whitelist.iter().any(|rx| rx.is_match(domain_str));
-        let in_domains = self.domains.iter().any(|dm| domain.host() == dm.host());
+        let in_domains = self.domains.iter().any(|dm| domain.host() == dm.0.host());
         let in_super_blacklist = self
             .super_blacklist
             .iter()
@@ -70,18 +71,18 @@ impl<'de> Deserialize<'de> for StrSelector {
 
 #[derive(Debug)]
 pub struct Crawler {
-    pub unexhausted_domains: Vec<Url>,
     pub hits: Vec<Url>,
     pub misses: Vec<Url>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct SingleCrawl {
-    pub unexhausted_domains: Vec<Url>,
+    pub domain: Url,
+    pub unexhausted_domains: Vec<PartialUrl>,
     pub is_hit: bool,
 }
 
-#[derive(RefCast)]
+#[derive(RefCast, Serialize, Deserialize, Clone, Debug)]
 #[repr(transparent)]
 pub struct PartialUrl(pub Url);
 
@@ -100,3 +101,4 @@ impl Hash for PartialUrl {
 }
 
 impl Eq for PartialUrl {}
+
