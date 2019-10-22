@@ -46,8 +46,7 @@ fn main() {
             (@arg default: --default conflicts_with("full") "generate a default configuration")
             (@arg full: --full conflicts_with("default") "generate a full default configuration")
         )
-    )
-    .get_matches();
+    ).get_matches();
 
     // CONFIGURE
     if let Some(configure_matches) = matches.subcommand_matches("configure") {
@@ -95,7 +94,7 @@ fn main() {
         if config
             .domains
             .iter()
-            .fold(false, |acc, domain| !config.valid_domain(domain) || acc)
+            .any(|domain| !config.valid_domain(domain))
         {
             panic!("Your blacklist overrides domains you have set")
         }
@@ -151,7 +150,6 @@ fn crawl_single
     , visited: &mut HashSet<PartialUrl>
     ) -> SingleCrawl {
     println!("crawling {}", domain);
-
     let domain_str = domain.as_str();
     let mut response: reqwest::Response = {
         let response_e = match &config.basic_auth {
