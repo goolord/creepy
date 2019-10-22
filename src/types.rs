@@ -38,18 +38,9 @@ pub struct BasicAuthCreds {
 impl Config {
     pub fn valid_domain(&self, domain: &Url) -> bool {
         let domain_str = domain.as_str();
-        let in_blacklist = self
-            .blacklist
-            .iter()
-            .any(|rx| rx.is_match(domain_str));
-        let in_whitelist = self
-            .whitelist
-            .iter()
-            .any(|rx| rx.is_match(domain_str));
-        let in_domains = self
-            .domains
-            .iter()
-            .any(|dm| domain.host() == dm.host());
+        let in_blacklist = self.blacklist.iter().any(|rx| rx.is_match(domain_str));
+        let in_whitelist = self.whitelist.iter().any(|rx| rx.is_match(domain_str));
+        let in_domains = self.domains.iter().any(|dm| domain.host() == dm.host());
         let in_super_blacklist = self
             .super_blacklist
             .iter()
@@ -109,4 +100,3 @@ impl Hash for PartialUrl {
 }
 
 impl Eq for PartialUrl {}
-

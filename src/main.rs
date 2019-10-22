@@ -106,7 +106,11 @@ fn main() {
     }
 }
 
-fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<PartialUrl>) -> Crawler {
+fn crawl_multi
+    ( domains: Vec<Url>
+    , config: &Config
+    , visited: &mut HashSet<PartialUrl>
+    ) -> Crawler {
     let unexhausted_domains: Vec<Url> = Vec::new();
     let mut hits: Vec<Url> = Vec::new(); // matched predicate
     let mut misses: Vec<Url> = Vec::new(); // did not match predicate
@@ -121,7 +125,8 @@ fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<Partial
         .unwrap();
     for domain in domains {
         if !visited.contains(PartialUrl::ref_cast(&domain)) {
-            let single_crawl: SingleCrawl = crawl_single(&domain, config, &client, &link_selector, visited);
+            let single_crawl: SingleCrawl =
+                crawl_single(&domain, config, &client, &link_selector, visited);
             if single_crawl.is_hit {
                 hits.push(domain.to_owned());
             } else {
@@ -138,12 +143,13 @@ fn crawl_multi(domains: Vec<Url>, config: &Config, visited: &mut HashSet<Partial
     };
 }
 
-fn crawl_single( domain: &Url
-               , config: &Config
-               , client: &reqwest::Client
-               , link_selector: &Selector
-               , visited: &mut HashSet<PartialUrl>
-               ) -> SingleCrawl {
+fn crawl_single
+    ( domain: &Url
+    , config: &Config
+    , client: &reqwest::Client
+    , link_selector: &Selector
+    , visited: &mut HashSet<PartialUrl>
+    ) -> SingleCrawl {
     println!("crawling {}", domain);
 
     let domain_str = domain.as_str();
@@ -154,10 +160,7 @@ fn crawl_single( domain: &Url
                 .header("ACCEPT", "text/html")
                 .header("AUTHORIZATION", format!("{}:{}", auth.user, auth.pass))
                 .send(),
-            None => client
-                .get(domain_str)
-                .header("ACCEPT", "text/html")
-                .send(),
+            None => client.get(domain_str).header("ACCEPT", "text/html").send(),
         };
         match response_e {
             Ok(x) => x,
@@ -186,7 +189,7 @@ fn crawl_single( domain: &Url
         Some(StrSelector(sel)) => {
             let hits = document.select(&sel);
             hits.into_iter().next().is_some()
-        },
+        }
         None => true,
     };
 
@@ -231,4 +234,3 @@ fn crawl_single( domain: &Url
         is_hit,
     };
 }
-
