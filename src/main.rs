@@ -126,7 +126,13 @@ fn main() {
             .build()
             .unwrap();
         let crawler: Vec<PartialUrl> = crawl_multi(config.domains.to_owned(), &config, &link_selector, &client, &mut visited);
-        println!("{}", crawler.iter().fold(String::new(), |acc, x| acc + "\n" + x.0.as_str()));
+        let domains_str: String = crawler
+            .par_iter()
+            .fold( || String::new()
+                 , |acc, x| acc + "\n" + x.0.as_str()
+                 )
+            .collect();
+        println!("{}", domains_str);
     }
 }
 
@@ -137,10 +143,7 @@ fn crawl_multi
     , client: &reqwest::Client
     , visited: &mut HashSet<PartialUrl>
     ) -> Vec<PartialUrl> {
-    // let mut hits: Vec<Url> = Vec::new(); // matched predicate
-    for domain in &domains {
-        visited.insert(domain.to_owned());
-    }
+    visited.extend(domains.clone());
     let single_crawls: HashSet<SingleCrawl> = domains.par_iter().map(|domain| {
         crawl_single(&domain.0, config, client, link_selector, visited)
     }).collect();
