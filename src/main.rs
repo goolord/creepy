@@ -23,6 +23,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use types::*;
 use url::Url;
+use std::fs;
 
 fn read_file_contents(file_name: &str) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
@@ -132,8 +133,19 @@ fn main() {
                  , |acc, x| acc + "\n" + x.0.as_str()
                  )
             .collect();
-        println!("{}", domains_str);
+        match write_file("hits.txt", &domains_str) {
+            Ok(_) => println!("Done. Exported hits to hits.txt"),
+            Err(e) => {
+                eprintln!("Error writing file: {}", e);
+                eprintln!("Dumping hits to stdout");
+                println!("{}", domains_str);
+            }
+        }
     }
+}
+
+fn write_file(file_name: &'static str, file_contents: &String) -> Result<(), std::io::Error> {
+    fs::write(file_name, file_contents)
 }
 
 fn crawl_multi
