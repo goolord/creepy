@@ -2,10 +2,10 @@ use ref_cast::RefCast;
 use regex::Regex;
 use scraper::Selector;
 use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use url::Url;
-use std::collections::HashSet;
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {

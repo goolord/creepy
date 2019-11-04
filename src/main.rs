@@ -16,6 +16,7 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::fs::File;
+use std::fs;
 use std::hash::{Hash};
 use std::io::prelude::*;
 use std::iter::FromIterator;
@@ -23,7 +24,6 @@ use std::thread::sleep;
 use std::time::Duration;
 use types::*;
 use url::Url;
-use std::fs;
 
 fn read_file_contents(file_name: &str) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
