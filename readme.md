@@ -47,20 +47,3 @@ FLAGS:
 OPTIONS:
     -c, --config <CONFIG>    Config file: domains, blacklist, etc
 ```
-
-## Installation
-$ nix-env -i -f default.nix -A creepy
-
-## Hacking
-
-Most of the nix is generated using [carnix](https://github.com/nix-community/carnix). None of the massive generated files really ever need editing.
-
-Hot reloading the executable:
-```
-$ nix-shell --run 'watch'
-```
-
-Hot reloading the executable and running tests:
-```
-$ nix-shell --run 'test-runner'
-```
