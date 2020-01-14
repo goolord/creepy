@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
+use std::cmp::Ordering;
 use url::Url;
 
 #[derive(Deserialize, Serialize)]
@@ -20,6 +21,7 @@ pub struct Config {
     #[serde(with = "serde_regex")]
     pub super_blacklist: Vec<Regex>,
     pub respect_robots_txt: bool,
+    pub clean_output: bool,
     #[serde(default)]
     #[serde(skip_serializing)]
     pub match_criteria: Option<StrSelector>,
@@ -93,6 +95,8 @@ impl PartialEq for PartialUrl {
     }
 }
 
+impl Eq for PartialUrl {}
+
 impl Hash for PartialUrl {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.host().hash(state);
@@ -100,5 +104,19 @@ impl Hash for PartialUrl {
     }
 }
 
-impl Eq for PartialUrl {}
+impl PartialOrd for PartialUrl {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        return Some(self.cmp(other));
+    }
+}
+
+impl Ord for PartialUrl {
+    fn cmp(&self, other: &Self) -> Ordering {
+       match self.0.host().cmp(&other.0.host()) {
+           Ordering::Equal => self.0.path().cmp(&other.0.path()),
+           x => x
+       }
+    }
+}
+
 

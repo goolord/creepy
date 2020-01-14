@@ -74,6 +74,7 @@ fn main() {
                 whitelist: Vec::new(),
                 super_blacklist: Vec::new(),
                 respect_robots_txt: false,
+                clean_output: false,
                 link_criteria: None,
                 match_criteria: None,
                 period: Duration::from_secs(0),
@@ -88,6 +89,7 @@ fn main() {
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
                 super_blacklist: vec![Regex::new(".*\\.jpg").unwrap()],
                 respect_robots_txt: true,
+                clean_output: false,
                 link_criteria: Some(StrSelector(Selector::parse("a[href]").unwrap())),
                 match_criteria: Some(StrSelector(Selector::parse("form").unwrap())),
                 period: Duration::from_secs(1),
@@ -126,7 +128,11 @@ fn main() {
             .timeout(Duration::from_secs(8)) // 8 second timeout
             .build()
             .unwrap();
-        let crawler: Vec<PartialUrl> = crawl_multi(config.domains.to_owned(), &config, &link_selector, &client, &mut visited);
+        let mut crawler: Vec<PartialUrl> = crawl_multi(config.domains.to_owned(), &config, &link_selector, &client, &mut visited);
+        if config.clean_output {
+            crawler.sort();
+            crawler.dedup();
+        }
         let domains_str: String = crawler
             .par_iter()
             .fold( || String::new()
@@ -225,7 +231,8 @@ fn crawl_single
 
     let mut push_url = |url: Url| {
         let valid_domain = config.valid_domain(&url);
-        if valid_domain && !visited.contains(PartialUrl::ref_cast(&url)) {
+        let not_visited = !visited.contains(PartialUrl::ref_cast(&url));
+        if valid_domain && not_visited {
             legs.push(PartialUrl(url))
         }
     };
