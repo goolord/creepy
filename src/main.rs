@@ -10,14 +10,15 @@ extern crate serde;
 extern crate serde_regex;
 extern crate url;
 mod types;
+use futures::executor::block_on;
 use rayon::prelude::*;
 use ref_cast::RefCast;
 use regex::Regex;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
-use std::fs::File;
 use std::fs;
-use std::hash::{Hash};
+use std::fs::File;
+use std::hash::Hash;
 use std::io::prelude::*;
 use std::iter::FromIterator;
 use std::thread::sleep;
@@ -37,15 +38,19 @@ fn decode_toml<D: serde::de::DeserializeOwned>(file_name: &str) -> Result<D, tom
     return toml::from_str(&contents);
 }
 
-fn singleton_hashset<A>(item: A) -> HashSet<A> 
-    where A: Eq + Hash, {
+fn singleton_hashset<A>(item: A) -> HashSet<A>
+where
+    A: Eq + Hash,
+{
     let mut set = HashSet::new();
     set.insert(item);
     return set;
 }
 
-fn vec_to_set<A>(vec: Vec<A>) -> HashSet<A> 
-    where A: Eq + Hash, {
+fn vec_to_set<A>(vec: Vec<A>) -> HashSet<A>
+where
+    A: Eq + Hash,
+{
     HashSet::from_iter(vec)
 }
 
@@ -63,7 +68,8 @@ fn main() {
             (@arg default: --default conflicts_with("full") "generate a default configuration")
             (@arg full: --full conflicts_with("default") "generate a full default configuration")
         )
-    ).get_matches();
+    )
+    .get_matches();
 
     // CONFIGURE
     if let Some(configure_matches) = matches.subcommand_matches("configure") {
@@ -84,7 +90,9 @@ fn main() {
         }
         if configure_matches.is_present("full") {
             let full_config: Config = Config {
-                domains: singleton_hashset(PartialUrl(Url::parse("https://github.com/goolord").unwrap())),
+                domains: singleton_hashset(PartialUrl(
+                    Url::parse("https://github.com/goolord").unwrap(),
+                )),
                 blacklist: vec![Regex::new(".*").unwrap()],
                 whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
                 super_blacklist: vec![Regex::new(".*\\.jpg").unwrap()],
@@ -128,16 +136,20 @@ fn main() {
             .timeout(Duration::from_secs(8)) // 8 second timeout
             .build()
             .unwrap();
-        let mut crawler: Vec<PartialUrl> = crawl_multi(config.domains.to_owned(), &config, &link_selector, &client, &mut visited);
+        let mut crawler: Vec<PartialUrl> = crawl_multi(
+            config.domains.to_owned(),
+            &config,
+            &link_selector,
+            &client,
+            &mut visited,
+        );
         if config.clean_output {
             crawler.sort();
             crawler.dedup();
         }
         let domains_str: String = crawler
             .par_iter()
-            .fold( || String::new()
-                 , |acc, x| acc + "\n" + x.0.as_str()
-                 )
+            .fold(|| String::new(), |acc, x| acc + "\n" + x.0.as_str())
             .collect();
         match write_file("hits.txt", &domains_str) {
             Ok(_) => println!("Done. Exported hits to hits.txt"),
@@ -154,38 +166,45 @@ fn write_file(file_name: &'static str, file_contents: &String) -> Result<(), std
     fs::write(file_name, file_contents)
 }
 
-fn crawl_multi
-    ( domains: HashSet<PartialUrl>
-    , config: &Config
-    , link_selector: &Selector
-    , client: &reqwest::Client
-    , visited: &mut HashSet<PartialUrl>
-    ) -> Vec<PartialUrl> {
+fn crawl_multi(
+    domains: HashSet<PartialUrl>,
+    config: &Config,
+    link_selector: &Selector,
+    client: &reqwest::Client,
+    visited: &mut HashSet<PartialUrl>,
+) -> Vec<PartialUrl> {
     visited.extend(domains.clone());
-    let single_crawls: HashSet<SingleCrawl> = domains.par_iter().map(|domain| {
-        crawl_single(&domain.0, config, client, link_selector, visited)
-    }).collect();
+    let single_crawls: HashSet<SingleCrawl> = domains
+        .par_iter()
+        .map(|domain| crawl_single(&domain.0, config, client, link_selector, visited))
+        .collect();
     let mut hits = Vec::new();
     for crawl in single_crawls.into_iter() {
         if crawl.is_hit {
             hits.push(PartialUrl(crawl.domain));
         }
-        let mut new_hits = crawl_multi(vec_to_set(crawl.unexhausted_domains), config, link_selector, client, visited);
+        let mut new_hits = crawl_multi(
+            vec_to_set(crawl.unexhausted_domains),
+            config,
+            link_selector,
+            client,
+            visited,
+        );
         hits.append(&mut new_hits);
     }
     return hits;
 }
 
-fn crawl_single
-    ( domain: &Url
-    , config: &Config
-    , client: &reqwest::Client
-    , link_selector: &Selector
-    , visited: &HashSet<PartialUrl>
-    ) -> SingleCrawl {
+fn crawl_single(
+    domain: &Url,
+    config: &Config,
+    client: &reqwest::Client,
+    link_selector: &Selector,
+    visited: &HashSet<PartialUrl>,
+) -> SingleCrawl {
     println!("crawling {}", domain);
     let domain_str = domain.as_str();
-    let mut response: reqwest::Response = {
+    let response: reqwest::Response = {
         let response_e = match &config.basic_auth {
             Some(auth) => client
                 .get(domain_str)
@@ -194,7 +213,7 @@ fn crawl_single
                 .send(),
             None => client.get(domain_str).header("ACCEPT", "text/html").send(),
         };
-        match response_e {
+        match block_on(response_e) {
             Ok(x) => x,
             Err(e) => {
                 eprintln!("Error: {}", e);
@@ -206,7 +225,7 @@ fn crawl_single
             }
         }
     };
-    let body: String = match response.text() {
+    let body: String = match block_on(response.text()) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("Error: response text error in {}", e);
