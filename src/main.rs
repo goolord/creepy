@@ -30,12 +30,12 @@ fn read_file_contents(file_name: &str) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
-    return Ok(contents);
+    Ok(contents)
 }
 
 fn decode_toml<D: serde::de::DeserializeOwned>(file_name: &str) -> Result<D, toml::de::Error> {
     let contents = read_file_contents(file_name).expect("Could not read toml file");
-    return toml::from_str(&contents);
+    toml::from_str(&contents)
 }
 
 fn singleton_hashset<A>(item: A) -> HashSet<A>
@@ -44,7 +44,7 @@ where
 {
     let mut set = HashSet::new();
     set.insert(item);
-    return set;
+    set
 }
 
 fn vec_to_set<A>(vec: Vec<A>) -> HashSet<A>
@@ -149,7 +149,7 @@ fn main() {
         }
         let domains_str: String = crawler
             .par_iter()
-            .fold(|| String::new(), |acc, x| acc + "\n" + x.0.as_str())
+            .fold(String::new, |acc, x| acc + "\n" + x.0.as_str())
             .collect();
         match write_file("hits.txt", &domains_str) {
             Ok(_) => println!("Done. Exported hits to hits.txt"),
@@ -162,7 +162,7 @@ fn main() {
     }
 }
 
-fn write_file(file_name: &'static str, file_contents: &String) -> Result<(), std::io::Error> {
+fn write_file(file_name: &'static str, file_contents: &str) -> Result<(), std::io::Error> {
     fs::write(file_name, file_contents)
 }
 
@@ -192,7 +192,7 @@ fn crawl_multi(
         );
         hits.append(&mut new_hits);
     }
-    return hits;
+    hits
 }
 
 fn crawl_single(
@@ -240,8 +240,8 @@ fn crawl_single(
 
     let is_hit: bool = match &config.match_criteria {
         Some(StrSelector(sel)) => {
-            let hits = document.select(&sel);
-            hits.into_iter().next().is_some()
+            let mut hits = document.select(&sel);
+            hits.next().is_some()
         }
         None => true,
     };
@@ -258,7 +258,7 @@ fn crawl_single(
 
     let links = document.select(link_selector);
     for link in links.into_iter() {
-        link.value().attr("href").map(|url| {
+        if let Some(url) = link.value().attr("href") {
             match Url::parse(url) {
                 Ok(url_parsed) => push_url(url_parsed),
                 Err(e) => match e {
@@ -278,14 +278,14 @@ fn crawl_single(
                     _ => eprintln!("Could not parse URL \"{}\": {}", url, e),
                 },
             };
-        });
+        };
     }
 
     sleep(config.period); // polite delay
 
-    return SingleCrawl {
+    SingleCrawl {
         domain: domain.to_owned(),
         unexhausted_domains: legs,
         is_hit,
-    };
+    }
 }

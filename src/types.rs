@@ -48,7 +48,7 @@ impl Config {
             .super_blacklist
             .iter()
             .any(|rx| rx.is_match(domain_str));
-        return (!in_blacklist || in_whitelist || in_domains) && !in_super_blacklist;
+        (!in_blacklist || in_whitelist || in_domains) && !in_super_blacklist
     }
 }
 
@@ -106,7 +106,7 @@ impl Hash for PartialUrl {
 
 impl PartialOrd for PartialUrl {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        return Some(self.cmp(other));
+        Some(self.cmp(other))
     }
 }
 
@@ -118,5 +118,4 @@ impl Ord for PartialUrl {
        }
     }
 }
-
 
