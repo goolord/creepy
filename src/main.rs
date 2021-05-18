@@ -1,14 +1,4 @@
 #[macro_use]
-extern crate clap;
-extern crate html5ever;
-extern crate rayon;
-extern crate ref_cast;
-extern crate reqwest;
-extern crate scraper;
-extern crate select;
-extern crate serde;
-extern crate serde_regex;
-extern crate url;
 mod types;
 use futures::executor::block_on;
 use rayon::prelude::*;
@@ -23,17 +13,57 @@ use std::io::prelude::*;
 use std::iter::FromIterator;
 use std::thread::sleep;
 use std::time::Duration;
+use std::{path::PathBuf, str::FromStr};
+use structopt::StructOpt;
 use types::*;
 use url::Url;
+use Opt::Configure;
 
-fn read_file_contents(file_name: &str) -> std::io::Result<String> {
+#[derive(Debug, StructOpt)]
+#[structopt(
+    name = "toml_mustache",
+    about = "🐛 Creepy crawly web crawler",
+    version = "1.0",
+    author = "Zachary Churchill <zacharyachurchill@gmail.com>"
+)]
+enum Opt {
+    #[structopt(about = "Web crawling")]
+    Crawly {
+        #[structopt(long, help = "Config file: domains, blacklist, etc")]
+        config_file: PathBuf,
+    },
+    #[structopt(about = "Configuration options")]
+    Configure { config_type: ConfigType },
+}
+
+#[derive(Debug, StructOpt)]
+enum ConfigType {
+    #[structopt(help = "generate a default configuration")]
+    Default,
+    #[structopt(help = "generate a full default configuration")]
+    Full,
+}
+
+impl FromStr for ConfigType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "default" => Ok(ConfigType::Default),
+            "full" => Ok(ConfigType::Full),
+            _ => Err("invalid".to_string()),
+        }
+    }
+}
+
+fn read_file_contents(file_name: PathBuf) -> std::io::Result<String> {
     let mut file = File::open(file_name)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     Ok(contents)
 }
 
-fn decode_toml<D: serde::de::DeserializeOwned>(file_name: &str) -> Result<D, toml::de::Error> {
+fn decode_toml<D: serde::de::DeserializeOwned>(file_name: PathBuf) -> Result<D, toml::de::Error> {
     let contents = read_file_contents(file_name).expect("Could not read toml file");
     toml::from_str(&contents)
 }
@@ -55,108 +85,92 @@ where
 }
 
 fn main() {
-    let matches = clap_app!( creepy =>
-        (version: "1.0")
-        (author: "Zachary Churchill <zacharyachurchill@gmail.com>")
-        (about: "🐛 Creepy crawly web crawler")
-        (@subcommand crawly =>
-            (about: "Web crawling")
-            (@arg CONFIG: --config -c +required +takes_value "Config file: domains, blacklist, etc")
-        )
-        (@subcommand configure =>
-            (about: "Configuration options")
-            (@arg default: --default conflicts_with("full") "generate a default configuration")
-            (@arg full: --full conflicts_with("default") "generate a full default configuration")
-        )
-    )
-    .get_matches();
+    let opt = Opt::from_args();
 
-    // CONFIGURE
-    if let Some(configure_matches) = matches.subcommand_matches("configure") {
-        if configure_matches.is_present("default") {
-            let default_config: Config = Config {
-                domains: HashSet::new(),
-                blacklist: Vec::new(),
-                whitelist: Vec::new(),
-                super_blacklist: Vec::new(),
-                respect_robots_txt: false,
-                clean_output: false,
-                link_criteria: None,
-                match_criteria: None,
-                period: Duration::from_secs(0),
-                basic_auth: None,
+    match opt {
+        Configure { config_type } => match config_type {
+            ConfigType::Default => {
+                let default_config: Config = Config {
+                    domains: HashSet::new(),
+                    blacklist: Vec::new(),
+                    whitelist: Vec::new(),
+                    super_blacklist: Vec::new(),
+                    respect_robots_txt: false,
+                    clean_output: false,
+                    link_criteria: None,
+                    match_criteria: None,
+                    period: Duration::from_secs(0),
+                    basic_auth: None,
+                };
+                println!("{}", toml::to_string_pretty(&default_config).unwrap())
+            }
+            ConfigType::Full => {
+                let full_config: Config = Config {
+                    domains: singleton_hashset(PartialUrl(
+                        Url::parse("https://github.com/goolord").unwrap(),
+                    )),
+                    blacklist: vec![Regex::new(".*").unwrap()],
+                    whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
+                    super_blacklist: vec![Regex::new(".*\\.jpg").unwrap()],
+                    respect_robots_txt: true,
+                    clean_output: false,
+                    link_criteria: Some(StrSelector(Selector::parse("a[href]").unwrap())),
+                    match_criteria: Some(StrSelector(Selector::parse("form").unwrap())),
+                    period: Duration::from_secs(1),
+                    basic_auth: Some(BasicAuthCreds {
+                        user: String::from("username"),
+                        pass: String::from("pass"),
+                    }),
+                };
+                println!("link_criteria = 'a.is-link:not(button)'");
+                println!("match_criteria = 'form.is-form'");
+                println!("{}", toml::to_string_pretty(&full_config).unwrap());
+            }
+        },
+        Opt::Crawly { config_file } => {
+            // unwrap required args
+            let config: Config = decode_toml(config_file).expect("Could not decode config");
+            // validate the config
+            if config
+                .domains
+                .iter()
+                .any(|domain| !config.valid_domain(&domain.0))
+            {
+                panic!("Your blacklist overrides domains you have set")
+            }
+            // crawl
+            let mut visited: HashSet<PartialUrl> = HashSet::new(); // visited domains
+            let link_selector = match &config.link_criteria {
+                None => Selector::parse("a[href]").unwrap(), // default link selector
+                Some(selector) => selector.0.to_owned(),
             };
-            println!("{}", toml::to_string_pretty(&default_config).unwrap())
-        }
-        if configure_matches.is_present("full") {
-            let full_config: Config = Config {
-                domains: singleton_hashset(PartialUrl(
-                    Url::parse("https://github.com/goolord").unwrap(),
-                )),
-                blacklist: vec![Regex::new(".*").unwrap()],
-                whitelist: vec![Regex::new("https://github.com/goolord.*").unwrap()],
-                super_blacklist: vec![Regex::new(".*\\.jpg").unwrap()],
-                respect_robots_txt: true,
-                clean_output: false,
-                link_criteria: Some(StrSelector(Selector::parse("a[href]").unwrap())),
-                match_criteria: Some(StrSelector(Selector::parse("form").unwrap())),
-                period: Duration::from_secs(1),
-                basic_auth: Some(BasicAuthCreds {
-                    user: String::from("username"),
-                    pass: String::from("pass"),
-                }),
-            };
-            println!("link_criteria = 'a.is-link:not(button)'");
-            println!("match_criteria = 'form.is-form'");
-            println!("{}", toml::to_string_pretty(&full_config).unwrap());
-        }
-    }
-
-    // CRAWLY
-    if let Some(crawly_matches) = matches.subcommand_matches("crawly") {
-        // unwrap required args
-        let config_file_name: &str = crawly_matches.value_of("CONFIG").unwrap();
-        let config: Config = decode_toml(config_file_name).expect("Could not decode config");
-        // validate the config
-        if config
-            .domains
-            .iter()
-            .any(|domain| !config.valid_domain(&domain.0))
-        {
-            panic!("Your blacklist overrides domains you have set")
-        }
-        // crawl
-        let mut visited: HashSet<PartialUrl> = HashSet::new(); // visited domains
-        let link_selector = match &config.link_criteria {
-            None => Selector::parse("a[href]").unwrap(), // default link selector
-            Some(selector) => selector.0.to_owned(),
-        };
-        let client: reqwest::Client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(Duration::from_secs(8)) // 8 second timeout
-            .build()
-            .unwrap();
-        let mut crawler: Vec<PartialUrl> = crawl_multi(
-            config.domains.to_owned(),
-            &config,
-            &link_selector,
-            &client,
-            &mut visited,
-        );
-        if config.clean_output {
-            crawler.sort();
-            crawler.dedup();
-        }
-        let domains_str: String = crawler
-            .par_iter()
-            .fold(String::new, |acc, x| acc + "\n" + x.0.as_str())
-            .collect();
-        match write_file("hits.txt", &domains_str) {
-            Ok(_) => println!("Done. Exported hits to hits.txt"),
-            Err(e) => {
-                eprintln!("Error writing file: {}", e);
-                eprintln!("Dumping hits to stdout");
-                println!("{}", domains_str);
+            let client: reqwest::Client = reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .timeout(Duration::from_secs(8)) // 8 second timeout
+                .build()
+                .unwrap();
+            let mut crawler: Vec<PartialUrl> = crawl_multi(
+                config.domains.to_owned(),
+                &config,
+                &link_selector,
+                &client,
+                &mut visited,
+            );
+            if config.clean_output {
+                crawler.sort();
+                crawler.dedup();
+            }
+            let domains_str: String = crawler
+                .par_iter()
+                .fold(String::new, |acc, x| acc + "\n" + x.0.as_str())
+                .collect();
+            match write_file("hits.txt", &domains_str) {
+                Ok(_) => println!("Done. Exported hits to hits.txt"),
+                Err(e) => {
+                    eprintln!("Error writing file: {}", e);
+                    eprintln!("Dumping hits to stdout");
+                    println!("{}", domains_str);
+                }
             }
         }
     }

@@ -2,10 +2,10 @@ use ref_cast::RefCast;
 use regex::Regex;
 use scraper::Selector;
 use serde::{Deserialize, Deserializer, Serialize};
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
-use std::cmp::Ordering;
 use url::Url;
 
 #[derive(Deserialize, Serialize)]
@@ -90,8 +90,7 @@ pub struct PartialUrl(pub Url);
 
 impl PartialEq for PartialUrl {
     fn eq(&self, other: &Self) -> bool {
-           self.0.host() == other.0.host() 
-        && self.0.path() == other.0.path()
+        self.0.host() == other.0.host() && self.0.path() == other.0.path()
     }
 }
 
@@ -112,10 +111,9 @@ impl PartialOrd for PartialUrl {
 
 impl Ord for PartialUrl {
     fn cmp(&self, other: &Self) -> Ordering {
-       match self.0.host().cmp(&other.0.host()) {
-           Ordering::Equal => self.0.path().cmp(&other.0.path()),
-           x => x
-       }
+        match self.0.host().cmp(&other.0.host()) {
+            Ordering::Equal => self.0.path().cmp(&other.0.path()),
+            x => x,
+        }
     }
 }
-
